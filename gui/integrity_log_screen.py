@@ -1,6 +1,7 @@
 # gui/integrity_log_screen.py
 # Post-exam integrity log review screen.
-# Shows all flagged behavioral events from the session.
+# Displays behavioral events as episodes with start time,
+# end time, duration, and descriptive labels.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -16,7 +17,7 @@ class IntegrityLogScreen(tk.Tk):
         self.config    = config
 
         self.title('AAIMS — Session Integrity Log')
-        self.geometry('680x480')
+        self.geometry('820x500')
         self.resizable(False, False)
         self.configure(bg='#F5F5F5')
 
@@ -27,15 +28,15 @@ class IntegrityLogScreen(tk.Tk):
                  bg='#F5F5F5', fg='#1A1A1A').pack(pady=(18, 2))
 
         tk.Label(self,
-                 text=f"Student: {config.get('student_id', '')}   |   "
-                      f"Exam: {config.get('exam_name', '')}",
+                 text=f"Student: {config.get('student_id', '')}   "
+                      f"|   Exam: {config.get('exam_name', '')}",
                  font=('Arial', 9),
                  bg='#F5F5F5', fg='#444444').pack()
 
         ttk.Separator(self, orient='horizontal').pack(
             fill='x', padx=30, pady=10)
 
-        # summary
+        # summary line
         self.summary_label = tk.Label(
             self, text='Loading...',
             font=('Arial', 9),
@@ -47,15 +48,21 @@ class IntegrityLogScreen(tk.Tk):
         table_frame.pack(fill='both', expand=True,
                          padx=30, pady=(0, 10))
 
-        cols = ('Timestamp', 'Event Type')
+        cols = ('Start Time', 'End Time',
+                'Duration', 'Description')
         self.tree = ttk.Treeview(
             table_frame, columns=cols,
             show='headings', height=12)
 
-        self.tree.heading('Timestamp',  text='Timestamp')
-        self.tree.heading('Event Type', text='Event Type')
-        self.tree.column('Timestamp',  width=220, anchor='center')
-        self.tree.column('Event Type', width=380, anchor='center')
+        self.tree.heading('Start Time',  text='Start Time')
+        self.tree.heading('End Time',    text='End Time')
+        self.tree.heading('Duration',    text='Duration')
+        self.tree.heading('Description', text='Description')
+
+        self.tree.column('Start Time',  width=145, anchor='center')
+        self.tree.column('End Time',    width=145, anchor='center')
+        self.tree.column('Duration',    width=80,  anchor='center')
+        self.tree.column('Description', width=370, anchor='w')
 
         scrollbar = ttk.Scrollbar(
             table_frame, orient='vertical',
@@ -64,7 +71,8 @@ class IntegrityLogScreen(tk.Tk):
         self.tree.pack(side='left', fill='both', expand=True)
         scrollbar.pack(side='right', fill='y')
 
-        self.tree.tag_configure('flagged', background='#FFE0E0')
+        self.tree.tag_configure(
+            'flagged', background='#FFE0E0')
 
         # buttons
         btn_frame = tk.Frame(self, bg='#F5F5F5')
@@ -91,22 +99,36 @@ class IntegrityLogScreen(tk.Tk):
     def _load_log(self):
         try:
             df = pd.read_csv(self.processor.log_path)
-            total   = len(df)
-            head    = len(df[df['event_type'] == 'HEAD_TURN'])
-            absent  = len(df[df['event_type'] == 'FACE_ABSENT'])
-            mouth   = len(df[df['event_type'] == 'MOUTH_OPEN'])
+
+            if df.empty:
+                self.summary_label.configure(
+                    text='No behavioral events recorded '
+                         'during this session.')
+                return
+
+            total  = len(df)
+            head   = len(df[df['event_type'] == 'HEAD_TURN'])
+            absent = len(df[df['event_type'] == 'FACE_ABSENT'])
+            mouth  = len(df[df['event_type'] == 'MOUTH_OPEN'])
 
             self.summary_label.configure(
-                text=f'Total Events: {total}   |   '
-                     f'Head Turn: {head}   |   '
+                text=f'Total Episodes: {total}   |   '
+                     f'Head Turned: {head}   |   '
                      f'Face Absent: {absent}   |   '
-                     f'Mouth Open: {mouth}')
+                     f'Mouth Movement: {mouth}')
 
             for _, row in df.iterrows():
+                duration_text = (
+                    f"{row['duration_seconds']}s"
+                )
                 self.tree.insert(
                     '', 'end',
-                    values=(row['timestamp'],
-                            row['event_type']),
+                    values=(
+                        row['start_time'],
+                        row['end_time'],
+                        duration_text,
+                        row['description']
+                    ),
                     tags=('flagged',))
 
         except FileNotFoundError:
@@ -118,12 +140,12 @@ class IntegrityLogScreen(tk.Tk):
 
     def _export(self):
         try:
-            desktop = os.path.join(
+            desktop  = os.path.join(
                 os.path.expanduser('~'), 'Desktop')
             filename = (
                 f"AAIMS_Log_"
-                f"{self.config.get('student_id', 'unknown')}"
-                f"_{self.config.get('exam_name', '')}.csv"
+                f"{self.config.get('student_id', 'unknown')}_"
+                f"{self.config.get('exam_name', '')}.csv"
             ).replace(' ', '_')
             dest = os.path.join(desktop, filename)
             shutil.copy(self.processor.log_path, dest)
@@ -131,5 +153,4 @@ class IntegrityLogScreen(tk.Tk):
                 'Export Successful',
                 f'Log exported to Desktop:\n{filename}')
         except Exception as e:
-            messagebox.showerror(
-                'Export Failed', str(e))
+            messagebox.showerror('Export Failed', str(e))

@@ -32,8 +32,8 @@ class FaceAbsenceDetector:
         """
         faces = self.face_cascade.detectMultiScale(
             gray_frame,
-            scaleFactor=1.1,
-            minNeighbors=8,
+            scaleFactor=1.05,
+            minNeighbors=4,
             minSize=(30, 30)
         )
         return 1 if len(faces) > 0 else 0
