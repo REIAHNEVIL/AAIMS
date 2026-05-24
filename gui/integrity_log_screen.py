@@ -98,36 +98,34 @@ class IntegrityLogScreen(tk.Tk):
 
     def _load_log(self):
         try:
-            df = pd.read_csv(self.processor.log_path)
+            session_log = pd.read_csv(self.processor.log_path)
 
-            if df.empty:
+            if session_log.empty:
                 self.summary_label.configure(
                     text='No behavioral events recorded '
                          'during this session.')
                 return
 
-            total  = len(df)
-            head   = len(df[df['event_type'] == 'HEAD_TURN'])
-            absent = len(df[df['event_type'] == 'FACE_ABSENT'])
-            mouth  = len(df[df['event_type'] == 'MOUTH_OPEN'])
+            total_episodes      = len(session_log)
+            head_turn_count     = len(session_log[session_log['event_type'] == 'HEAD_TURN'])
+            face_absent_count   = len(session_log[session_log['event_type'] == 'FACE_ABSENT'])
+            mouth_movement_count = len(session_log[session_log['event_type'] == 'MOUTH_OPEN'])
 
             self.summary_label.configure(
-                text=f'Total Episodes: {total}   |   '
-                     f'Head Turned: {head}   |   '
-                     f'Face Absent: {absent}   |   '
-                     f'Mouth Movement: {mouth}')
+                text=f'Total Episodes: {total_episodes}   |   '
+                     f'Head Turned: {head_turn_count}   |   '
+                     f'Face Absent: {face_absent_count}   |   '
+                     f'Mouth Movement: {mouth_movement_count}')
 
-            for _, row in df.iterrows():
-                duration_text = (
-                    f"{row['duration_seconds']}s"
-                )
+            for _, episode in session_log.iterrows():
+                duration_text = f"{episode['duration_seconds']}s"
                 self.tree.insert(
                     '', 'end',
                     values=(
-                        row['start_time'],
-                        row['end_time'],
+                        episode['start_time'],
+                        episode['end_time'],
                         duration_text,
-                        row['description']
+                        episode['description']
                     ),
                     tags=('flagged',))
 
@@ -140,15 +138,15 @@ class IntegrityLogScreen(tk.Tk):
 
     def _export(self):
         try:
-            desktop  = os.path.join(
+            desktop_directory = os.path.join(
                 os.path.expanduser('~'), 'Desktop')
             filename = (
                 f"AAIMS_Log_"
                 f"{self.config.get('student_id', 'unknown')}_"
                 f"{self.config.get('exam_name', '')}.csv"
             ).replace(' ', '_')
-            dest = os.path.join(desktop, filename)
-            shutil.copy(self.processor.log_path, dest)
+            destination_path = os.path.join(desktop_directory, filename)
+            shutil.copy(self.processor.log_path, destination_path)
             messagebox.showinfo(
                 'Export Successful',
                 f'Log exported to Desktop:\n{filename}')

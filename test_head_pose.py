@@ -27,59 +27,56 @@ while cap.isOpened():
     if not success:
         break
 
-    image            = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+    image                 = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
     image.flags.writeable = False
-    results          = face_mesh.process(image)
+    results               = face_mesh.process(image)
     image.flags.writeable = True
-    image            = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    image                 = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-    img_h, img_w, _ = image.shape
+    image_height, image_width, _ = image.shape
 
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
 
-            x, y, z, nose_2d, nose_3d, rot_vec, trans_vec = head_pose.get_angles(
-                face_landmarks, img_w, img_h
-            )
+            pitch, yaw, roll, nose_2d, nose_3d, rotation_vector, translation_vector = \
+                head_pose.get_angles(face_landmarks, image_width, image_height)
 
-            if x is None:
+            if pitch is None:
                 continue
 
-            # get direction from module
-            direction = head_pose.get_direction(x, y)
-
-            # check if this frame would be flagged
-            flagged = head_pose.check_flag(x, y)
+            direction = head_pose.get_direction(pitch, yaw)
+            flagged   = head_pose.detect_head_turned(pitch, yaw)
 
             # draw nose direction line
-            p1 = (int(nose_2d[0]), int(nose_2d[1]))
-            p2 = (int(nose_2d[0] + y * 10), int(nose_2d[1] - x * 10))
-            cv2.line(image, p1, p2, (255, 0, 0), 3)
+            nose_point           = (int(nose_2d[0]), int(nose_2d[1]))
+            nose_direction_point = (int(nose_2d[0] + yaw * 10), int(nose_2d[1] - pitch * 10))
+            cv2.line(image, nose_point, nose_direction_point, (255, 0, 0), 3)
 
-            # show direction label
-            # turns red when flagged
+            # show direction label — turns red when flagged
             label_color = (0, 0, 255) if flagged else (0, 255, 0)
             cv2.putText(image, direction,
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
                         2, label_color, 2)
 
             # show raw angle values
-            cv2.putText(image, f'x: {round(x, 2)}',
+            cv2.putText(image, f'Pitch: {round(pitch, 2)}',
                         (500, 50), cv2.FONT_HERSHEY_SIMPLEX,
                         1, (0, 0, 255), 2)
-            cv2.putText(image, f'y: {round(y, 2)}',
+            cv2.putText(image, f'Yaw: {round(yaw, 2)}',
                         (500, 100), cv2.FONT_HERSHEY_SIMPLEX,
                         1, (0, 0, 255), 2)
-            cv2.putText(image, f'z: {round(z, 2)}',
+            cv2.putText(image, f'Roll: {round(roll, 2)}',
                         (500, 150), cv2.FONT_HERSHEY_SIMPLEX,
                         1, (0, 0, 255), 2)
 
-            # show flag counter so you can see it counting up
-            cv2.putText(image, f'Flag counter: {head_pose.flag_counter}/{head_pose.FRAME_THRESHOLD}',
+            # show off-screen frame count so you can see it counting up
+            cv2.putText(image,
+                        f'Off-screen frames: '
+                        f'{head_pose.sustained_off_screen_frames}/'
+                        f'{head_pose.FRAMES_TO_FLAG_HEAD_TURN}',
                         (20, 420), cv2.FONT_HERSHEY_SIMPLEX,
                         0.8, (255, 255, 0), 2)
 
-            # show flagged status
             if flagged:
                 cv2.putText(image, 'FLAGGED',
                             (20, 380), cv2.FONT_HERSHEY_SIMPLEX,

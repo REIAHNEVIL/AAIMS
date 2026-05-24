@@ -25,36 +25,36 @@ class ProctorDashboard(tk.Tk):
         self.configure(bg='#F5F5F5')
 
         # top info bar
-        info = tk.Frame(self, bg='#2C3E50', pady=6)
-        info.pack(fill='x')
-        tk.Label(info,
+        header_bar = tk.Frame(self, bg='#2C3E50', pady=6)
+        header_bar.pack(fill='x')
+        tk.Label(header_bar,
                  text=f"Student: {config.get('student_id', '')}   |   "
                       f"Exam: {config.get('exam_name', '')}   |   "
                       f"Workstation: {config.get('workstation', '')}",
                  font=('Arial', 9), bg='#2C3E50',
                  fg='white').pack()
 
-        # main content
-        content = tk.Frame(self, bg='#F5F5F5')
-        content.pack(fill='both', expand=True, padx=15, pady=10)
+        # main content area
+        main_content = tk.Frame(self, bg='#F5F5F5')
+        main_content.pack(fill='both', expand=True, padx=15, pady=10)
 
         # left: webcam feed
-        left = tk.Frame(content, bg='#F5F5F5')
-        left.pack(side='left', fill='both', expand=True)
+        webcam_panel = tk.Frame(main_content, bg='#F5F5F5')
+        webcam_panel.pack(side='left', fill='both', expand=True)
 
-        tk.Label(left, text='Live Feed',
+        tk.Label(webcam_panel, text='Live Feed',
                  font=('Arial', 9, 'bold'),
                  bg='#F5F5F5', fg='#444444').pack(anchor='w')
 
-        self.video_label = tk.Label(left, bg='black')
+        self.video_label = tk.Label(webcam_panel, bg='black')
         self.video_label.pack()
 
         # right: status panel
-        right = tk.Frame(content, bg='#F5F5F5', width=230)
-        right.pack(side='right', fill='y', padx=(12, 0))
-        right.pack_propagate(False)
+        status_panel = tk.Frame(main_content, bg='#F5F5F5', width=230)
+        status_panel.pack(side='right', fill='y', padx=(12, 0))
+        status_panel.pack_propagate(False)
 
-        tk.Label(right, text='Detection Status',
+        tk.Label(status_panel, text='Detection Status',
                  font=('Arial', 9, 'bold'),
                  bg='#F5F5F5', fg='#444444').pack(
                  anchor='w', pady=(0, 6))
@@ -67,23 +67,23 @@ class ProctorDashboard(tk.Tk):
             ('Face Absence',    'absence_flag'),
             ('Mouth Movement',  'mouth_alert_active'),
         ]:
-            row = tk.Frame(right, bg='#EFEFEF',
-                           pady=6, padx=8)
-            row.pack(fill='x', pady=2)
-            tk.Label(row, text=label,
+            indicator_row = tk.Frame(status_panel, bg='#EFEFEF',
+                                     pady=6, padx=8)
+            indicator_row.pack(fill='x', pady=2)
+            tk.Label(indicator_row, text=label,
                      font=('Arial', 9), bg='#EFEFEF',
                      fg='#1A1A1A').pack(side='left')
-            dot = tk.Label(row, text='\u25cf',
-                           font=('Arial', 14),
-                           bg='#EFEFEF', fg='green')
-            dot.pack(side='right')
-            self.indicators[key] = dot
+            status_dot = tk.Label(indicator_row, text='●',
+                                  font=('Arial', 14),
+                                  bg='#EFEFEF', fg='green')
+            status_dot.pack(side='right')
+            self.indicators[key] = status_dot
 
         # metrics
-        ttk.Separator(right, orient='horizontal').pack(
+        ttk.Separator(status_panel, orient='horizontal').pack(
             fill='x', pady=8)
 
-        tk.Label(right, text='Metrics',
+        tk.Label(status_panel, text='Metrics',
                  font=('Arial', 9, 'bold'),
                  bg='#F5F5F5', fg='#444444').pack(anchor='w')
 
@@ -94,31 +94,31 @@ class ProctorDashboard(tk.Tk):
             ('Pitch',     'pitch'),
             ('MAR',       'mar'),
         ]:
-            row = tk.Frame(right, bg='#F5F5F5')
-            row.pack(fill='x', pady=1)
-            tk.Label(row, text=f'{label}:',
+            metric_row = tk.Frame(status_panel, bg='#F5F5F5')
+            metric_row.pack(fill='x', pady=1)
+            tk.Label(metric_row, text=f'{label}:',
                      font=('Arial', 9), bg='#F5F5F5',
                      fg='#444444', width=9,
                      anchor='w').pack(side='left')
-            val = tk.Label(row, text='---',
-                           font=('Courier', 9),
-                           bg='#F5F5F5', fg='#1A1A1A')
-            val.pack(side='left')
-            self.metric_labels[key] = val
+            metric_value_label = tk.Label(metric_row, text='---',
+                                          font=('Courier', 9),
+                                          bg='#F5F5F5', fg='#1A1A1A')
+            metric_value_label.pack(side='left')
+            self.metric_labels[key] = metric_value_label
 
         # alert label
-        ttk.Separator(right, orient='horizontal').pack(
+        ttk.Separator(status_panel, orient='horizontal').pack(
             fill='x', pady=8)
 
         self.alert_label = tk.Label(
-            right, text='',
+            status_panel, text='',
             font=('Arial', 9, 'bold'),
             bg='#F5F5F5', fg='red',
             wraplength=200, justify='center')
         self.alert_label.pack()
 
         # end session button
-        tk.Button(right,
+        tk.Button(status_panel,
                   text='End Session',
                   font=('Arial', 9, 'bold'),
                   bg='#7B0000', fg='white',
@@ -137,31 +137,36 @@ class ProctorDashboard(tk.Tk):
 
     def _camera_loop(self):
         while self.running:
-            ret, frame = self.cap.read()
-            if not ret:
+            success, frame = self.cap.read()
+            if not success:
                 continue
             result = self.processor.process_frame(frame)
-            self.after(0, self._update_gui, frame, result)
+            try:
+                self.after(0, self._update_gui, frame, result)
+            except tk.TclError:
+                break  # window was destroyed between the check and the after() call
 
     def _update_gui(self, frame, result):
+        if not self.winfo_exists():
+            return
         # update webcam feed
-        rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        small = cv2.resize(rgb, (480, 360))
-        img   = ImageTk.PhotoImage(Image.fromarray(small))
-        self.video_label.configure(image=img)
-        self.video_label.image = img
+        rgb_frame     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        resized_frame = cv2.resize(rgb_frame, (480, 360))
+        display_image = ImageTk.PhotoImage(Image.fromarray(resized_frame))
+        self.video_label.configure(image=display_image)
+        self.video_label.image = display_image
 
-        # update indicators
-        for key, dot in self.indicators.items():
-            val = result.get(key, 0)
+        # update status indicators
+        for key, status_dot in self.indicators.items():
+            current_value = result.get(key, 0)
             if key == 'face_present':
-                dot.configure(
-                    fg='green' if val else 'red')
+                status_dot.configure(
+                    fg='green' if current_value else 'red')
             else:
-                dot.configure(
-                    fg='red' if val else 'green')
+                status_dot.configure(
+                    fg='red' if current_value else 'green')
 
-        # update metrics
+        # update metric readouts
         self.metric_labels['direction'].configure(
             text=result.get('direction', '---'))
         self.metric_labels['yaw'].configure(
@@ -174,8 +179,11 @@ class ProctorDashboard(tk.Tk):
     def _show_alert(self, event_type):
         self.alert_label.configure(
             text=f'ALERT\n{event_type}')
-        self.after(5000, lambda:
-            self.alert_label.configure(text=''))
+        self.after(5000, self._clear_alert)
+
+    def _clear_alert(self):
+        if self.winfo_exists():
+            self.alert_label.configure(text='')
 
     def _end_session(self):
         self.running = False

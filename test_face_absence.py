@@ -16,12 +16,12 @@ while cap.isOpened():
     if not success:
         break
 
-    gray    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    flagged = detector.check_flag(gray)
+    grayscale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    flagged         = detector.detect_absence(grayscale_frame)
 
     # show status on screen
-    status       = 'FACE ABSENT' if detector.last_prediction == 0 else 'FACE PRESENT'
-    status_color = (0, 0, 255) if detector.last_prediction == 0 else (0, 255, 0)
+    status       = 'FACE ABSENT' if detector.current_face_state == 0 else 'FACE PRESENT'
+    status_color = (0, 0, 255) if detector.current_face_state == 0 else (0, 255, 0)
 
     cv2.putText(frame, status,
                 (20, 50), cv2.FONT_HERSHEY_SIMPLEX,

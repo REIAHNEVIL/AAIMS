@@ -35,8 +35,8 @@ while cap.isOpened():
 
     # mouth cycle counter
     cv2.putText(frame,
-                f"Mouth cycles: {processor.mouth.cycle_counter}"
-                f"/{processor.mouth.CYCLE_THRESHOLD}",
+                f"Mouth cycles: {processor.mouth.open_close_cycle_count}"
+                f"/{processor.mouth.CYCLES_TO_FLAG_TALKING}",
                 (20, 110), cv2.FONT_HERSHEY_SIMPLEX,
                 0.7, (255, 255, 0), 2)
 

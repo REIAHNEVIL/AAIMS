@@ -83,6 +83,8 @@ class CalibrationScreen(tk.Tk):
             min_tracking_confidence=0.5
         )
 
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
+
         # start showing webcam immediately
         self._update_preview()
 
@@ -91,20 +93,23 @@ class CalibrationScreen(tk.Tk):
         if not self.running:
             return
 
-        ret, frame = self.cap.read()
-        if ret:
-            # convert and resize for display
-            rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            small = cv2.resize(rgb, (480, 300))
-            img   = ImageTk.PhotoImage(Image.fromarray(small))
-            self.video_label.configure(image=img)
-            self.video_label.image = img
+        success, frame = self.cap.read()
+        if success:
+            rgb_frame     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            resized_frame = cv2.resize(rgb_frame, (480, 300))
+            display_image = ImageTk.PhotoImage(Image.fromarray(resized_frame))
+            self.video_label.configure(image=display_image)
+            self.video_label.image = display_image
 
-            # process calibration if active
             if self.calibrating:
                 self._process_calibration_frame(frame)
 
         self.after(33, self._update_preview)
+
+    def _on_close(self):
+        self.running = False
+        self.cap.release()
+        self.destroy()
 
     def _start(self):
         """Called when proctor clicks Start Calibration."""
@@ -118,24 +123,24 @@ class CalibrationScreen(tk.Tk):
         if self.captured >= CALIBRATION_FRAMES:
             return
 
-        h, w    = frame.shape[:2]
-        rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh.process(rgb)
+        frame_height, frame_width = frame.shape[:2]
+        rgb_frame                 = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results                   = self.face_mesh.process(rgb_frame)
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
 
             # collect head pose angles
             angles = self.processor.head_pose.get_angles(
-                landmarks, w, h)
+                landmarks, frame_width, frame_height)
             if angles[0] is not None:
                 self.angle_buffer.append(
                     (angles[0], angles[1]))
 
             # collect MAR values
-            mar = self.processor.mouth.compute_mar(
-                landmarks.landmark, w, h)
-            self.mar_buffer.append(mar)
+            mouth_aspect_ratio = self.processor.mouth.compute_mar(
+                landmarks.landmark, frame_width, frame_height)
+            self.mar_buffer.append(mouth_aspect_ratio)
 
             self.captured += 1
             self.progress_bar['value'] = self.captured
@@ -157,10 +162,10 @@ class CalibrationScreen(tk.Tk):
                 np.mean(self.mar_buffer))
 
         print(f'Calibration complete.')
-        print(f'Head baseline x: '
-              f'{self.processor.head_pose.baseline_x:.2f}')
-        print(f'Head baseline y: '
-              f'{self.processor.head_pose.baseline_y:.2f}')
+        print(f'Head baseline pitch: '
+              f'{self.processor.head_pose.pitch_baseline:.2f}')
+        print(f'Head baseline yaw: '
+              f'{self.processor.head_pose.yaw_baseline:.2f}')
         print(f'MAR baseline: '
               f'{self.processor.mouth.mar_baseline:.4f}')
 

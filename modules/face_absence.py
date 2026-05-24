@@ -21,33 +21,33 @@ class FaceAbsenceDetector:
         # consecutive absence counter
         self.absence_counter   = 0
         self.ABSENCE_THRESHOLD = 30  # ~1 second at 30fps
-        self.last_prediction   = 1  # add this line
+        self.current_face_state = 1  # 1 = face present, 0 = face absent
         print('FaceAbsenceDetector loaded successfully.')
 
-    def predict(self, gray_frame):
+    def predict(self, grayscale_frame):
         """
         Detects whether a face is present in the grayscale frame
         using Haar Cascade.
         Returns 1 if face detected, 0 if not.
         """
         faces = self.face_cascade.detectMultiScale(
-            gray_frame,
+            grayscale_frame,
             scaleFactor=1.05,
             minNeighbors=4,
             minSize=(30, 30)
         )
         return 1 if len(faces) > 0 else 0
 
-    def check_flag(self, gray_frame):
+    def detect_absence(self, grayscale_frame):
         """
         Checks the current frame for face presence and
         updates the absence counter accordingly.
         Returns True if face has been absent for more than
         ABSENCE_THRESHOLD consecutive frames.
         """
-        self.last_prediction = self.predict(gray_frame)
+        self.current_face_state = self.predict(grayscale_frame)
 
-        if self.last_prediction == 0:
+        if self.current_face_state == 0:
             self.absence_counter += 1
         else:
             self.absence_counter = 0

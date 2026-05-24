@@ -22,86 +22,82 @@ class MouthMovementDetector:
         model_path ='models/svm_mouth_classifier.pkl',
         scaler_path='models/svm_mouth_scaler.pkl'
     ):
-        # load the trained SVM and its scaler
-        self.svm    = joblib.load(model_path)
-        self.scaler = joblib.load(scaler_path)
+        self.mouth_classifier = joblib.load(model_path)
+        self.feature_scaler   = joblib.load(scaler_path)
 
-        # counts consecutive frames where mouth is open
-        self.flag_counter    = 0
-        self.FRAME_THRESHOLD = 5   # frames needed per open cycle
+        # counts consecutive frames where mouth is classified as open
+        self.open_frame_count         = 0
+        self.MIN_OPEN_FRAMES_PER_CYCLE = 5   # frames needed to count as one open cycle
 
         # counts how many open-close cycles have occurred
         # talking produces multiple cycles, a yawn produces one
-        self.cycle_counter   = 0
-        self.CYCLE_THRESHOLD = 3   # cycles needed to flag
+        self.open_close_cycle_count  = 0
+        self.CYCLES_TO_FLAG_TALKING  = 3   # cycles needed to flag as talking
 
         # last raw MAR value for display purposes
         self.last_mar = 0.0
 
-        # last SVM prediction for display purposes
-        self.last_prediction = 0  # 0 = closed, 1 = open
-        
+        # last SVM prediction for display purposes (0 = closed, 1 = open)
+        self.current_mouth_state = 0
+
         print('MouthMovementDetector loaded successfully.')
 
-    def compute_mar(self, landmarks, img_w, img_h):
+    def compute_mar(self, landmarks, image_width, image_height):
         """
         Computes the Mouth Aspect Ratio (MAR) from lip landmarks.
         MAR = vertical lip distance / horizontal mouth width.
         Higher MAR means mouth is more open.
         """
-        def get_point(idx):
-            lm = landmarks[idx]
-            return np.array([lm.x * img_w, lm.y * img_h])
+        def landmark_to_pixel(landmark_index):
+            landmark = landmarks[landmark_index]
+            return np.array([landmark.x * image_width, landmark.y * image_height])
 
-        vertical   = np.linalg.norm(
-            get_point(UPPER_LIP) - get_point(LOWER_LIP))
-        horizontal = np.linalg.norm(
-            get_point(LEFT_CORNER) - get_point(RIGHT_CORNER))
+        vertical_lip_distance  = np.linalg.norm(
+            landmark_to_pixel(UPPER_LIP) - landmark_to_pixel(LOWER_LIP))
+        horizontal_mouth_width = np.linalg.norm(
+            landmark_to_pixel(LEFT_CORNER) - landmark_to_pixel(RIGHT_CORNER))
 
-        # add small value to avoid division by zero
-        return vertical / (horizontal + 1e-6)
+        # small epsilon avoids division by zero on degenerate frames
+        return vertical_lip_distance / (horizontal_mouth_width + 1e-6)
 
-    def check_flag(self, landmarks, img_w, img_h):
+    def detect_talking(self, landmarks, image_width, image_height):
         """
         Detects repeated mouth opening patterns consistent
         with verbal communication.
 
-        Counts open-close cycles. When CYCLE_THRESHOLD cycles
+        Counts open-close cycles. When CYCLES_TO_FLAG_TALKING cycles
         are reached, flags once then resets to detect the
         next episode of talking.
 
         Returns True only on the frame the threshold is crossed.
         """
-        mar = self.compute_mar(landmarks, img_w, img_h)
-        self.last_mar = mar
+        mouth_aspect_ratio = self.compute_mar(landmarks, image_width, image_height)
+        self.last_mar = mouth_aspect_ratio
 
-        # scale raw MAR and classify with trained SVM
-        mar_scaled = self.scaler.transform([[mar]])
-        self.last_prediction = self.svm.predict(mar_scaled)[0]
+        normalized_mar           = self.feature_scaler.transform([[mouth_aspect_ratio]])
+        self.current_mouth_state = self.mouth_classifier.predict(normalized_mar)[0]
 
-        flagged = False
+        talking_detected = False
 
-        if self.last_prediction == 1:
-            self.flag_counter += 1
+        if self.current_mouth_state == 1:
+            self.open_frame_count += 1
         else:
-            # mouth just closed — check if it counts as a cycle
-            if self.flag_counter >= self.FRAME_THRESHOLD:
-                self.cycle_counter += 1
+            # mouth just closed — check if it sustained long enough to count as a cycle
+            if self.open_frame_count >= self.MIN_OPEN_FRAMES_PER_CYCLE:
+                self.open_close_cycle_count += 1
 
-                # check if enough cycles to flag
-                if self.cycle_counter >= self.CYCLE_THRESHOLD:
-                    flagged = True
-                    # reset so next talking episode
-                    # can be detected independently
-                    self.cycle_counter = 0
+                if self.open_close_cycle_count >= self.CYCLES_TO_FLAG_TALKING:
+                    talking_detected = True
+                    # reset so the next talking episode can be detected independently
+                    self.open_close_cycle_count = 0
 
-            self.flag_counter = 0
+            self.open_frame_count = 0
 
-        return flagged
+        return talking_detected
 
     def reset(self):
         """Resets all counters — call at session start."""
-        self.flag_counter    = 0
-        self.cycle_counter   = 0
-        self.last_mar        = 0.0
-        self.last_prediction = 0
+        self.open_frame_count       = 0
+        self.open_close_cycle_count = 0
+        self.last_mar               = 0.0
+        self.current_mouth_state    = 0

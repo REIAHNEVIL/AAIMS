@@ -119,58 +119,53 @@ class AaimsProcessor:
                     self._end_episode(event_type)
 
     def process_frame(self, frame):
-        img_h, img_w = frame.shape[:2]
+        image_height, image_width = frame.shape[:2]
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        grayscale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        rgb_frame       = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        pitch        = 0.0
-        yaw          = 0.0
-        roll         = 0.0
-        mar          = 0.0
-        face_present = 0
-        head_flag    = False
-        mouth_flag   = False
-        direction    = 'No Face'
+        pitch              = 0.0
+        yaw                = 0.0
+        roll               = 0.0
+        mouth_aspect_ratio = 0.0
+        face_present       = 0
+        head_flag          = False
+        mouth_flag         = False
+        direction          = 'No Face'
 
         # haar cascade is the source of truth for face presence
-        haar_says_present = self.face_absence.predict(gray)
+        haar_says_present = self.face_absence.predict(grayscale_frame)
 
         if haar_says_present == 1:
             face_present = 1
             self.face_absence.absence_counter = 0
 
-            results = self.face_mesh.process(rgb)
+            results = self.face_mesh.process(rgb_frame)
 
             if results.multi_face_landmarks:
                 landmarks = results.multi_face_landmarks[0]
 
-                angles = self.head_pose.get_angles(
-                    landmarks, img_w, img_h)
+                pitch, yaw, roll, *_ = self.head_pose.get_angles(
+                    landmarks, image_width, image_height)
 
-                if angles[0] is not None:
-                    pitch     = angles[0]
-                    yaw       = angles[1]
-                    roll      = angles[2]
-                    direction = self.head_pose.get_direction(
-                        pitch, yaw)
-                    head_flag = self.head_pose.check_flag(
-                        pitch, yaw)
+                if pitch is not None:
+                    direction = self.head_pose.get_direction(pitch, yaw)
+                    head_flag = self.head_pose.detect_head_turned(pitch, yaw)
 
-                mouth_flag = self.mouth.check_flag(
-                    landmarks.landmark, img_w, img_h)
-                mar = self.mouth.last_mar
+                mouth_flag         = self.mouth.detect_talking(
+                    landmarks.landmark, image_width, image_height)
+                mouth_aspect_ratio = self.mouth.last_mar
 
         else:
             face_present = 0
             direction    = 'No Face'
             self.face_absence.absence_counter += 1
 
-            self.mouth.last_mar        = 0.0
-            self.mouth.last_prediction = 0
-            self.mouth.flag_counter    = 0
-            self.mouth.cycle_counter   = 0
-            mar = 0.0
+            self.mouth.last_mar               = 0.0
+            self.mouth.current_mouth_state    = 0
+            self.mouth.open_frame_count       = 0
+            self.mouth.open_close_cycle_count = 0
+            mouth_aspect_ratio = 0.0
 
         absence_flag = (
             self.face_absence.absence_counter >=
@@ -203,7 +198,7 @@ class AaimsProcessor:
             'pitch':              pitch,
             'yaw':                yaw,
             'roll':               roll,
-            'mar':                mar,
+            'mar':                mouth_aspect_ratio,
             'face_present':       face_present,
             'direction':          direction,
             'head_flag':          head_flag,

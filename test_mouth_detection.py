@@ -23,15 +23,15 @@ while cap.isOpened():
     if not success:
         break
 
-    rgb     = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb)
-    img_h, img_w, _ = frame.shape
+    rgb_frame                    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results                      = face_mesh.process(rgb_frame)
+    image_height, image_width, _ = frame.shape
 
     if results.multi_face_landmarks:
         for face_landmarks in results.multi_face_landmarks:
             landmarks = face_landmarks.landmark
 
-            flagged = detector.check_flag(landmarks, img_w, img_h)
+            talking_detected = detector.detect_talking(landmarks, image_width, image_height)
 
             # show MAR value
             cv2.putText(frame, f'MAR: {detector.last_mar:.4f}',
@@ -39,19 +39,19 @@ while cap.isOpened():
                         1, (255, 255, 0), 2)
 
             # show mouth state
-            mouth_state  = 'OPEN' if detector.last_prediction == 1 else 'CLOSED'
-            state_color  = (0, 0, 255) if detector.last_prediction == 1 else (0, 255, 0)
+            mouth_state  = 'OPEN' if detector.current_mouth_state == 1 else 'CLOSED'
+            state_color  = (0, 0, 255) if detector.current_mouth_state == 1 else (0, 255, 0)
             cv2.putText(frame, f'Mouth: {mouth_state}',
                         (20, 100), cv2.FONT_HERSHEY_SIMPLEX,
                         1, state_color, 2)
 
-            # show counter
-            cv2.putText(frame, f'Counter: {detector.flag_counter}/{detector.FRAME_THRESHOLD}',
+            # show open frame count vs threshold
+            cv2.putText(frame, f'Open frames: {detector.open_frame_count}/{detector.MIN_OPEN_FRAMES_PER_CYCLE}',
                         (20, 150), cv2.FONT_HERSHEY_SIMPLEX,
                         0.8, (255, 255, 0), 2)
 
             # show flagged status
-            if flagged:
+            if talking_detected:
                 cv2.putText(frame, 'FLAGGED — MOUTH OPEN TOO LONG',
                             (20, 200), cv2.FONT_HERSHEY_SIMPLEX,
                             0.8, (0, 0, 255), 2)
