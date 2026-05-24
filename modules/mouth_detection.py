@@ -40,7 +40,7 @@ class MouthMovementDetector:
 
         # last SVM prediction for display purposes
         self.last_prediction = 0  # 0 = closed, 1 = open
-
+        
         print('MouthMovementDetector loaded successfully.')
 
     def compute_mar(self, landmarks, img_w, img_h):
@@ -75,6 +75,7 @@ class MouthMovementDetector:
         mar = self.compute_mar(landmarks, img_w, img_h)
         self.last_mar = mar
 
+        # scale raw MAR and classify with trained SVM
         mar_scaled = self.scaler.transform([[mar]])
         self.last_prediction = self.svm.predict(mar_scaled)[0]
 
@@ -90,7 +91,7 @@ class MouthMovementDetector:
                 # check if enough cycles to flag
                 if self.cycle_counter >= self.CYCLE_THRESHOLD:
                     flagged = True
-                    # reset everything so next talking episode
+                    # reset so next talking episode
                     # can be detected independently
                     self.cycle_counter = 0
 
