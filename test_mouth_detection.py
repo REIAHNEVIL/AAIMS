@@ -1,7 +1,3 @@
-# test_mouth_detection.py
-# Tests the MouthMovementDetector module.
-# Open your mouth clearly and hold it to trigger the flag.
-
 import cv2
 import mediapipe as mp
 from modules.mouth_detection import MouthMovementDetector
@@ -33,24 +29,21 @@ while cap.isOpened():
 
             talking_detected = detector.detect_talking(landmarks, image_width, image_height)
 
-            # show MAR value
             cv2.putText(frame, f'MAR: {detector.last_mar:.4f}',
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
                         1, (255, 255, 0), 2)
 
-            # show mouth state
             mouth_state  = 'OPEN' if detector.current_mouth_state == 1 else 'CLOSED'
             state_color  = (0, 0, 255) if detector.current_mouth_state == 1 else (0, 255, 0)
             cv2.putText(frame, f'Mouth: {mouth_state}',
                         (20, 100), cv2.FONT_HERSHEY_SIMPLEX,
                         1, state_color, 2)
 
-            # show open frame count vs threshold
-            cv2.putText(frame, f'Open frames: {detector.open_frame_count}/{detector.MIN_OPEN_FRAMES_PER_CYCLE}',
+            cv2.putText(frame,
+                        f'Open frames: {detector.open_frame_count}/{detector.MIN_OPEN_FRAMES_PER_CYCLE}',
                         (20, 150), cv2.FONT_HERSHEY_SIMPLEX,
                         0.8, (255, 255, 0), 2)
 
-            # show flagged status
             if talking_detected:
                 cv2.putText(frame, 'FLAGGED — MOUTH OPEN TOO LONG',
                             (20, 200), cv2.FONT_HERSHEY_SIMPLEX,

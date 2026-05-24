@@ -1,8 +1,3 @@
-# gui/calibration_screen.py
-# Baseline calibration screen for AAIMS.
-# Shows live webcam feed so the student can position
-# themselves correctly before calibration begins.
-
 import tkinter as tk
 from tkinter import ttk
 import cv2
@@ -25,7 +20,6 @@ class CalibrationScreen(tk.Tk):
         self.resizable(False, False)
         self.configure(bg='#F5F5F5')
 
-        # instruction label at top
         tk.Label(self,
                  text='Baseline Calibration',
                  font=('Arial', 12, 'bold'),
@@ -37,12 +31,9 @@ class CalibrationScreen(tk.Tk):
                  font=('Arial', 9),
                  bg='#F5F5F5', fg='#444444').pack()
 
-        # webcam feed — main focus of this screen
-        self.video_label = tk.Label(self, bg='black',
-                                    width=480, height=300)
+        self.video_label = tk.Label(self, bg='black', width=480, height=300)
         self.video_label.pack(pady=8)
 
-        # progress label
         self.progress_label = tk.Label(
             self,
             text='Press Start when you are ready.',
@@ -50,13 +41,10 @@ class CalibrationScreen(tk.Tk):
             bg='#F5F5F5', fg='#1A1A1A')
         self.progress_label.pack()
 
-        # progress bar
         self.progress_bar = ttk.Progressbar(
-            self, length=400,
-            maximum=CALIBRATION_FRAMES)
+            self, length=400, maximum=CALIBRATION_FRAMES)
         self.progress_bar.pack(pady=6)
 
-        # start button
         self.start_btn = tk.Button(
             self,
             text='Start Calibration',
@@ -68,7 +56,6 @@ class CalibrationScreen(tk.Tk):
             command=self._start)
         self.start_btn.pack(pady=6)
 
-        # internal state
         self.cap          = cv2.VideoCapture(0)
         self.calibrating  = False
         self.angle_buffer = []
@@ -76,7 +63,6 @@ class CalibrationScreen(tk.Tk):
         self.captured     = 0
         self.running      = True
 
-        # mediapipe for landmark extraction during calibration
         self.face_mesh = mp.solutions.face_mesh.FaceMesh(
             max_num_faces=1,
             min_detection_confidence=0.5,
@@ -84,12 +70,9 @@ class CalibrationScreen(tk.Tk):
         )
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
-
-        # start showing webcam immediately
         self._update_preview()
 
     def _update_preview(self):
-        """Updates the live webcam feed every 33ms (~30fps)."""
         if not self.running:
             return
 
@@ -112,14 +95,11 @@ class CalibrationScreen(tk.Tk):
         self.destroy()
 
     def _start(self):
-        """Called when proctor clicks Start Calibration."""
         self.calibrating = True
         self.start_btn.configure(state='disabled')
-        self.progress_label.configure(
-            text='Calibrating — please stay still...')
+        self.progress_label.configure(text='Calibrating — please stay still...')
 
     def _process_calibration_frame(self, frame):
-        """Extracts landmarks from one calibration frame."""
         if self.captured >= CALIBRATION_FRAMES:
             return
 
@@ -130,14 +110,11 @@ class CalibrationScreen(tk.Tk):
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
 
-            # collect head pose angles
             angles = self.processor.head_pose.get_angles(
                 landmarks, frame_width, frame_height)
             if angles[0] is not None:
-                self.angle_buffer.append(
-                    (angles[0], angles[1]))
+                self.angle_buffer.append((angles[0], angles[1]))
 
-            # collect MAR values
             mouth_aspect_ratio = self.processor.mouth.compute_mar(
                 landmarks.landmark, frame_width, frame_height)
             self.mar_buffer.append(mouth_aspect_ratio)
@@ -145,37 +122,27 @@ class CalibrationScreen(tk.Tk):
             self.captured += 1
             self.progress_bar['value'] = self.captured
             self.progress_label.configure(
-                text=f'Calibrating... '
-                     f'{self.captured}/{CALIBRATION_FRAMES} frames')
+                text=f'Calibrating... {self.captured}/{CALIBRATION_FRAMES} frames')
 
         if self.captured >= CALIBRATION_FRAMES:
             self._finish()
 
     def _finish(self):
-        """Saves baseline values and moves to dashboard."""
-        # set head pose neutral baseline
         self.processor.head_pose.calibrate(self.angle_buffer)
 
-        # set mouth resting MAR baseline
         if self.mar_buffer:
-            self.processor.mouth.mar_baseline = float(
-                np.mean(self.mar_buffer))
+            self.processor.mouth.mar_baseline = float(np.mean(self.mar_buffer))
 
         print(f'Calibration complete.')
-        print(f'Head baseline pitch: '
-              f'{self.processor.head_pose.pitch_baseline:.2f}')
-        print(f'Head baseline yaw: '
-              f'{self.processor.head_pose.yaw_baseline:.2f}')
-        print(f'MAR baseline: '
-              f'{self.processor.mouth.mar_baseline:.4f}')
+        print(f'Head baseline pitch: {self.processor.head_pose.pitch_baseline:.2f}')
+        print(f'Head baseline yaw:   {self.processor.head_pose.yaw_baseline:.2f}')
+        print(f'MAR baseline:        {self.processor.mouth.mar_baseline:.4f}')
 
-        self.progress_label.configure(
-            text='Calibration complete!', fg='green')
+        self.progress_label.configure(text='Calibration complete!', fg='green')
 
         self.running = False
         self.cap.release()
 
-        # short pause then proceed to dashboard
         self.after(1200, lambda: [
             self.destroy(),
             self.on_done(self.config)

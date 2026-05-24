@@ -1,15 +1,8 @@
-# test_head_pose.py
-# Tests the HeadPoseDetector module by replicating
-# what the YouTube tutorial displays on screen.
-# Also verifies that looking down is correctly detected
-# since AAIMS exams are strictly on-screen only.
-
 import cv2
 import mediapipe as mp
 import numpy as np
 from modules.head_pose import HeadPoseDetector
 
-# setup mediapipe face mesh same as the tutorial
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh    = mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5,
@@ -19,8 +12,7 @@ mp_drawing   = mp.solutions.drawing_utils
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 
 head_pose = HeadPoseDetector()
-
-cap = cv2.VideoCapture(0)
+cap       = cv2.VideoCapture(0)
 
 while cap.isOpened():
     success, image = cap.read()
@@ -47,29 +39,22 @@ while cap.isOpened():
             direction = head_pose.get_direction(pitch, yaw)
             flagged   = head_pose.detect_head_turned(pitch, yaw)
 
-            # draw nose direction line
             nose_point           = (int(nose_2d[0]), int(nose_2d[1]))
             nose_direction_point = (int(nose_2d[0] + yaw * 10), int(nose_2d[1] - pitch * 10))
             cv2.line(image, nose_point, nose_direction_point, (255, 0, 0), 3)
 
-            # show direction label — turns red when flagged
             label_color = (0, 0, 255) if flagged else (0, 255, 0)
             cv2.putText(image, direction,
                         (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
                         2, label_color, 2)
 
-            # show raw angle values
             cv2.putText(image, f'Pitch: {round(pitch, 2)}',
-                        (500, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                        1, (0, 0, 255), 2)
+                        (500, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.putText(image, f'Yaw: {round(yaw, 2)}',
-                        (500, 100), cv2.FONT_HERSHEY_SIMPLEX,
-                        1, (0, 0, 255), 2)
+                        (500, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.putText(image, f'Roll: {round(roll, 2)}',
-                        (500, 150), cv2.FONT_HERSHEY_SIMPLEX,
-                        1, (0, 0, 255), 2)
+                        (500, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-            # show off-screen frame count so you can see it counting up
             cv2.putText(image,
                         f'Off-screen frames: '
                         f'{head_pose.sustained_off_screen_frames}/'
@@ -82,7 +67,6 @@ while cap.isOpened():
                             (20, 380), cv2.FONT_HERSHEY_SIMPLEX,
                             1.5, (0, 0, 255), 3)
 
-            # draw face mesh
             mp_drawing.draw_landmarks(
                 image=image,
                 landmark_list=face_landmarks,

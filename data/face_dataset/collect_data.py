@@ -2,13 +2,12 @@ import cv2
 import os
 import time
 
-# Change this to 'face' or 'no_face' before running
-LABEL               = 'no_face'
-SAVE_DIRECTORY      = f'data/face_dataset/{LABEL}'
-TARGET_FRAME_COUNT  = 900
+LABEL              = 'no_face'
+SAVE_DIRECTORY     = f'data/face_dataset/{LABEL}'
+TARGET_FRAME_COUNT = 900
 os.makedirs(SAVE_DIRECTORY, exist_ok=True)
 
-cap = cv2.VideoCapture(1)
+cap       = cv2.VideoCapture(1)
 count     = 0
 last_save = time.time()
 
@@ -20,15 +19,13 @@ while True:
     if not success:
         break
 
-    # ── AUTO STOP ──────────────────────────────────────
     if count >= TARGET_FRAME_COUNT:
         print(f'Target of {TARGET_FRAME_COUNT} images reached. Stopping.')
         break
 
-    # Save a frame every 0.3 seconds
     if time.time() - last_save >= 0.3:
-        filename     = os.path.join(SAVE_DIRECTORY, f'{LABEL}_{count:04d}.jpg')
-        gray_frame   = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        filename      = os.path.join(SAVE_DIRECTORY, f'{LABEL}_{count:04d}.jpg')
+        gray_frame    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         resized_frame = cv2.resize(gray_frame, (128, 128))
         cv2.imwrite(filename, resized_frame)
         count    += 1

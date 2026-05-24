@@ -1,10 +1,3 @@
-# modules/aggregator.py
-# The core processing module for AAIMS.
-# Runs every webcam frame through all three detection modules
-# and produces a unified result for the GUI to display.
-# Logs behavioral events as episodes with start time,
-# end time, and duration instead of per-frame entries.
-
 import cv2
 import mediapipe as mp
 import csv
@@ -12,11 +5,10 @@ import datetime
 import os
 import time
 
-from modules.head_pose import HeadPoseDetector
-from modules.face_absence import FaceAbsenceDetector
+from modules.head_pose      import HeadPoseDetector
+from modules.face_absence   import FaceAbsenceDetector
 from modules.mouth_detection import MouthMovementDetector
 
-# human readable event labels for the integrity log
 EVENT_LABELS = {
     'HEAD_TURN':   'Student turned head away from screen',
     'FACE_ABSENT': 'Student face not visible in camera',
@@ -38,19 +30,15 @@ class AaimsProcessor:
 
         self.alert_callback = None
 
-        # tracks active episodes per event type
-        # each entry stores the start time of an ongoing event
         self.active_episodes = {
             'HEAD_TURN':   None,
             'FACE_ABSENT': None,
             'MOUTH_OPEN':  None,
         }
 
-        # mouth alert display timer
         self.mouth_alert_time    = 0
         self.MOUTH_ALERT_DISPLAY = 5
 
-        # set up log file
         os.makedirs('logs', exist_ok=True)
         self.log_path = f'logs/session_{datetime.date.today()}.csv'
         self._init_log()
@@ -58,7 +46,6 @@ class AaimsProcessor:
         print('AaimsProcessor initialized successfully.')
 
     def _init_log(self):
-        """Creates the log file with column headers."""
         with open(self.log_path, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
@@ -70,16 +57,10 @@ class AaimsProcessor:
             ])
 
     def _start_episode(self, event_type):
-        """Records the start of a new behavioral event episode."""
         if self.active_episodes[event_type] is None:
             self.active_episodes[event_type] = datetime.datetime.now()
 
     def _end_episode(self, event_type):
-        """
-        Records the end of a behavioral event episode.
-        Writes one row to the log with start time, end time,
-        duration, and a human readable description.
-        """
         start = self.active_episodes[event_type]
         if start is None:
             return
@@ -100,11 +81,6 @@ class AaimsProcessor:
         self.active_episodes[event_type] = None
 
     def _update_episodes(self, head_flag, absence_flag, mouth_flag):
-        """
-        Starts or ends event episodes based on current flags.
-        An episode starts when a flag turns on and ends
-        when that flag turns off.
-        """
         flags = {
             'HEAD_TURN':   head_flag,
             'FACE_ABSENT': absence_flag,
@@ -133,33 +109,33 @@ class AaimsProcessor:
         mouth_flag         = False
         direction          = 'No Face'
 
-        # haar cascade is the source of truth for face presence
-        haar_says_present = self.face_absence.predict(grayscale_frame)
+        results                = self.face_mesh.process(rgb_frame)
+        mediapipe_detects_face = bool(results.multi_face_landmarks)
+        haar_detects_face      = self.face_absence.predict(grayscale_frame) == 1
 
-        if haar_says_present == 1:
-            face_present = 1
+        if haar_detects_face and mediapipe_detects_face:
             self.face_absence.absence_counter = 0
+        else:
+            self.face_absence.absence_counter += 1
 
-            results = self.face_mesh.process(rgb_frame)
+        if mediapipe_detects_face:
+            face_present = 1
+            landmarks    = results.multi_face_landmarks[0]
 
-            if results.multi_face_landmarks:
-                landmarks = results.multi_face_landmarks[0]
+            pitch, yaw, roll, *_ = self.head_pose.get_angles(
+                landmarks, image_width, image_height)
 
-                pitch, yaw, roll, *_ = self.head_pose.get_angles(
-                    landmarks, image_width, image_height)
+            if pitch is not None:
+                direction = self.head_pose.get_direction(pitch, yaw)
+                head_flag = self.head_pose.detect_head_turned(pitch, yaw)
 
-                if pitch is not None:
-                    direction = self.head_pose.get_direction(pitch, yaw)
-                    head_flag = self.head_pose.detect_head_turned(pitch, yaw)
-
-                mouth_flag         = self.mouth.detect_talking(
-                    landmarks.landmark, image_width, image_height)
-                mouth_aspect_ratio = self.mouth.last_mar
+            mouth_flag         = self.mouth.detect_talking(
+                landmarks.landmark, image_width, image_height)
+            mouth_aspect_ratio = self.mouth.last_mar
 
         else:
             face_present = 0
             direction    = 'No Face'
-            self.face_absence.absence_counter += 1
 
             self.mouth.last_mar               = 0.0
             self.mouth.current_mouth_state    = 0
@@ -172,10 +148,8 @@ class AaimsProcessor:
             self.face_absence.ABSENCE_THRESHOLD
         )
 
-        # update episode tracking
         self._update_episodes(head_flag, absence_flag, mouth_flag)
 
-        # mouth alert display timer
         if mouth_flag:
             self.mouth_alert_time = time.time()
 
@@ -183,7 +157,6 @@ class AaimsProcessor:
             time.time() - self.mouth_alert_time
         ) < self.MOUTH_ALERT_DISPLAY
 
-        # collect active flags for GUI alert
         flagged_events = []
         if head_flag:    flagged_events.append('HEAD_TURN')
         if absence_flag: flagged_events.append('FACE_ABSENT')
@@ -191,8 +164,7 @@ class AaimsProcessor:
 
         if flagged_events and self.alert_callback:
             self.alert_callback(
-                ', '.join(EVENT_LABELS[e]
-                          for e in flagged_events))
+                ', '.join(EVENT_LABELS[e] for e in flagged_events))
 
         return {
             'pitch':              pitch,

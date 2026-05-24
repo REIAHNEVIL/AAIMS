@@ -18,7 +18,6 @@ while cap.isOpened():
 
     frame_start = time.time()
 
-    # Flip horizontally for selfie-view, then convert BGR → RGB
     image                 = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
     image.flags.writeable = False
     results               = face_mesh.process(image)
@@ -40,7 +39,6 @@ while cap.isOpened():
 
                     x_pixel = int(landmark.x * image_width)
                     y_pixel = int(landmark.y * image_height)
-
                     face_2d.append([x_pixel, y_pixel])
                     face_3d.append([x_pixel, y_pixel, landmark.z])
 
@@ -58,7 +56,7 @@ while cap.isOpened():
             solved, rotation_vector, translation_vector = cv2.solvePnP(
                 face_3d, face_2d, camera_matrix, distortion_coefficients)
 
-            rotation_matrix, _    = cv2.Rodrigues(rotation_vector)
+            rotation_matrix, _          = cv2.Rodrigues(rotation_vector)
             euler_angles, _, _, _, _, _ = cv2.RQDecomp3x3(rotation_matrix)
 
             pitch = euler_angles[0] * 360
@@ -76,7 +74,6 @@ while cap.isOpened():
             else:
                 direction_text = "Forward"
 
-            # Display nose direction line
             nose_projection, _ = cv2.projectPoints(
                 nose_3d, rotation_vector, translation_vector,
                 camera_matrix, distortion_coefficients)

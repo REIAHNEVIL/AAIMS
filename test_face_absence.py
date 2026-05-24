@@ -1,7 +1,3 @@
-# test_face_absence.py
-# Tests the FaceAbsenceDetector module.
-# Cover your camera or look away to trigger the absence flag.
-
 import cv2
 from modules.face_absence import FaceAbsenceDetector
 
@@ -19,21 +15,18 @@ while cap.isOpened():
     grayscale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     flagged         = detector.detect_absence(grayscale_frame)
 
-    # show status on screen
     status       = 'FACE ABSENT' if detector.current_face_state == 0 else 'FACE PRESENT'
     status_color = (0, 0, 255) if detector.current_face_state == 0 else (0, 255, 0)
 
     cv2.putText(frame, status,
-                (20, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                1.5, status_color, 2)
-    cv2.putText(frame, f'Absence counter: {detector.absence_counter}/{detector.ABSENCE_THRESHOLD}',
-                (20, 100), cv2.FONT_HERSHEY_SIMPLEX,
-                0.8, (255, 255, 0), 2)
+                (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, status_color, 2)
+    cv2.putText(frame,
+                f'Absence counter: {detector.absence_counter}/{detector.ABSENCE_THRESHOLD}',
+                (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
     if flagged:
         cv2.putText(frame, 'FLAGGED — FACE ABSENT TOO LONG',
-                    (20, 150), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8, (0, 0, 255), 2)
+                    (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
     cv2.imshow('Face Absence Test', frame)
 

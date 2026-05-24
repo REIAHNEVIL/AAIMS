@@ -1,7 +1,3 @@
-# gui/session_setup.py
-# Session setup screen for the proctor.
-# Collects student and session details before the exam.
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -24,48 +20,37 @@ class SessionSetupScreen(tk.Tk):
         ttk.Separator(self, orient='horizontal').pack(
             fill='x', padx=30, pady=(0, 15))
 
-        # form frame
         form = tk.Frame(self, bg='#F5F5F5')
         form.pack(padx=40, fill='x')
 
-        # student id
         tk.Label(form, text='Student ID / Name:',
                  font=('Arial', 10), bg='#F5F5F5',
-                 anchor='w').grid(row=0, column=0,
-                 sticky='w', pady=8)
+                 anchor='w').grid(row=0, column=0, sticky='w', pady=8)
         self.student_id = tk.Entry(form, font=('Arial', 10),
                                    width=28, relief='solid', bd=1)
-        self.student_id.grid(row=0, column=1,
-                             sticky='w', padx=(10, 0), pady=8)
+        self.student_id.grid(row=0, column=1, sticky='w', padx=(10, 0), pady=8)
 
-        # exam name
         tk.Label(form, text='Exam / Session Name:',
                  font=('Arial', 10), bg='#F5F5F5',
-                 anchor='w').grid(row=1, column=0,
-                 sticky='w', pady=8)
+                 anchor='w').grid(row=1, column=0, sticky='w', pady=8)
         self.exam_name = tk.Entry(form, font=('Arial', 10),
                                   width=28, relief='solid', bd=1)
-        self.exam_name.grid(row=1, column=1,
-                            sticky='w', padx=(10, 0), pady=8)
+        self.exam_name.grid(row=1, column=1, sticky='w', padx=(10, 0), pady=8)
         self.exam_name.insert(0, 'Midterm Examination')
 
-        # workstation
         tk.Label(form, text='Workstation Number:',
                  font=('Arial', 10), bg='#F5F5F5',
-                 anchor='w').grid(row=2, column=0,
-                 sticky='w', pady=8)
+                 anchor='w').grid(row=2, column=0, sticky='w', pady=8)
         self.workstation = tk.Entry(form, font=('Arial', 10),
                                     width=28, relief='solid', bd=1)
-        self.workstation.grid(row=2, column=1,
-                              sticky='w', padx=(10, 0), pady=8)
+        self.workstation.grid(row=2, column=1, sticky='w', padx=(10, 0), pady=8)
         self.workstation.insert(0, '1')
 
         ttk.Separator(self, orient='horizontal').pack(
             fill='x', padx=30, pady=15)
 
-        # start button
         tk.Button(self,
-                  text='Start Baseline Calibration \u2192',
+                  text='Start Baseline Calibration →',
                   font=('Arial', 10, 'bold'),
                   bg='#2C3E50', fg='white',
                   activebackground='#1A252F',

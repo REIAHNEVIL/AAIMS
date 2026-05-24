@@ -1,14 +1,9 @@
-# main.py
-# Entry point for AAIMS.
-# Launches all screens in order and connects them together.
-
 from modules.aggregator import AaimsProcessor
 from gui.notice_screen       import NoticeScreen
 from gui.session_setup       import SessionSetupScreen
 from gui.calibration_screen  import CalibrationScreen
 from gui.proctor_dashboard   import ProctorDashboard
 
-# load all models once at startup
 processor = AaimsProcessor()
 
 def launch_notice():
