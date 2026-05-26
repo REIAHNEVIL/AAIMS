@@ -48,8 +48,11 @@ self.open_frame_count          = 0
 self.MIN_OPEN_FRAMES_PER_CYCLE = 5
 self.open_close_cycle_count    = 0
 self.CYCLES_TO_FLAG_TALKING    = 3
-self.last_mar            = 0.0
-self.current_mouth_state = 0
+self.last_mar             = 0.0
+self.current_mouth_state  = 0
+self.previous_mouth_state = 0      ← tracks state change for terminal print
+self.mar_baseline         = 0.0    ← set by calibration; used as dual-gate threshold
+self.MAR_OPEN_MULTIPLIER  = 1.5    ← raw MAR must exceed baseline × 1.5 to accept SVM "open"
 ```
 
 **MediaPipe FaceMesh is initialized:**
@@ -92,7 +95,7 @@ No data is processed or transformed here. The proctor reads the notice, student 
 
 ---
 
-## Stage 3 — Session Setup (`gui/session_setup.py`)
+## Stage 3 — Session Setup (`frontend/session_setup.py`)
 
 The proctor fills in the form and clicks Start. The form data is collected into a plain Python dict:
 
@@ -110,7 +113,7 @@ This dict is passed by reference into every subsequent screen. It is never mutat
 
 ---
 
-## Stage 4 — Calibration (`gui/calibration_screen.py`)
+## Stage 4 — Calibration (`frontend/calibration_screen.py`)
 
 This stage is the only place where the `processor`'s internal baseline values change.
 
@@ -189,9 +192,11 @@ mouth.mar_baseline = float(np.mean(mar_buffer))                      e.g.  0.040
 
 After this point `pitch_baseline`, `yaw_baseline`, and `mar_baseline` are fixed for the entire session. The calibration FaceMesh and webcam are released.
 
+`mar_baseline` (e.g. 0.040) is now actively used every frame in `detect_talking()` as a personalized gate alongside the SVM. The SVM's "open" prediction is only accepted if `mouth_aspect_ratio > mar_baseline × 1.5` (i.e. `0.040 × 1.5 = 0.060`). This prevents the SVM from misfiring on students whose resting MAR sits near the training boundary.
+
 ---
 
-## Stage 5 — Live Monitoring (`gui/proctor_dashboard.py`)
+## Stage 5 — Live Monitoring (`frontend/proctor_dashboard.py`)
 
 This is the main loop. A background thread calls `process_frame()` continuously.
 
@@ -220,12 +225,22 @@ image_height, image_width = frame.shape[:2]
 # e.g. image_height=480, image_width=640
 ```
 
-#### Step 2 — Color Conversions
+#### Step 2 — Color Conversions and Haar Preprocessing
 
 ```python
 grayscale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 # shape: (480, 640)  — 2D, single channel intensity values 0–255
-# used by: Haar Cascade
+
+grayscale_frame = cv2.resize(grayscale_frame, (640, 480))
+# standardize to 640×480 so Haar Cascade receives a consistent input scale
+
+grayscale_frame = cv2.GaussianBlur(grayscale_frame, (5, 5), 0)
+# kernel (5,5) smooths pixel noise; sigmaX=0 → auto-calculated from kernel size
+
+grayscale_frame = self.clahe.apply(grayscale_frame)
+# CLAHE: local contrast enhancement — improves face detection in uneven lighting
+# result: shape still (480, 640), values 0–255, now contrast-enhanced
+# used by: Haar Cascade predict()
 
 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 # shape: (480, 640, 3)  — same as input but R and B channels swapped
@@ -415,10 +430,24 @@ normalized_mar = self.feature_scaler.transform([[0.103]])
 # normalized_mar = [[0.452]]
 ```
 
-**7c — SVM prediction:**
+**7c — SVM prediction + calibration gate:**
 ```python
-self.current_mouth_state = self.mouth_classifier.predict([[0.452]])[0]
-# → 0  (closed)
+svm_prediction = self.mouth_classifier.predict([[0.452]])[0]
+# → 1  (open, according to the SVM)
+
+baseline_open = mar_baseline > 0 and mouth_aspect_ratio > mar_baseline * MAR_OPEN_MULTIPLIER
+# mar_baseline = 0.040, MAR_OPEN_MULTIPLIER = 1.5
+# 0.103 > 0.040 × 1.5 = 0.060 → True
+
+self.current_mouth_state = 1 if (svm_prediction == 1 and baseline_open) else 0
+# both agree → current_mouth_state = 1  (open)
+```
+
+If the MAR were only 0.055 (just above the SVM boundary but below the baseline gate):
+```
+svm_prediction = 1  (SVM says open)
+baseline_open  = 0.055 > 0.060 → False
+current_mouth_state = 0  (gate rejects SVM's false positive)
 ```
 
 **7d — Cycle counting (mouth closed on this frame):**
@@ -552,6 +581,9 @@ def _start_episode('HEAD_TURN'):
     if self.active_episodes['HEAD_TURN'] is None:   # True — first flagged frame
         self.active_episodes['HEAD_TURN'] = datetime.datetime.now()
         # e.g. 2026-05-24 10:23:41.882
+        print('[Episode START] HEAD_TURN at 10:23:41')
+        self.alert_callback('Student turned head away from screen')
+        # fires ONCE — triggers the dashboard alert banner
 ```
 
 For `FACE_ABSENT` and `MOUTH_OPEN`:
@@ -615,11 +647,17 @@ A row is appended to the CSV:
 
 Let us trace several frames of the student talking.
 
-**Frame A** — mouth opens:
+**Frame A** — mouth opens (mar_baseline = 0.040):
 ```
-MAR = 0.19 → scaled = 3.23 → SVM → 1 (open)
-current_mouth_state = 1
+MAR = 0.19
+scaled = 3.23 → SVM → 1 (open)
+baseline_open = 0.19 > 0.040 × 1.5 = 0.060 → True
+current_mouth_state = 1  (both SVM and baseline agree)
+
+previous_mouth_state was 0 → print '[Mouth] Opened | MAR: 0.1900 | cycle: 0/3'
+
 open_frame_count += 1 → open_frame_count = 1
+previous_mouth_state = 1
 talking_detected = False
 ```
 
@@ -636,9 +674,11 @@ current_mouth_state = 0
 # else branch:
 open_frame_count (6) >= MIN_OPEN_FRAMES_PER_CYCLE (5) → True
 open_close_cycle_count += 1 → open_close_cycle_count = 1
+print '[Mouth] Cycle 1/3 completed (open for 6 frames)'
 
 open_close_cycle_count (1) >= CYCLES_TO_FLAG_TALKING (3) → False
 open_frame_count = 0
+previous_mouth_state = 0
 
 talking_detected = False
 ```
@@ -652,12 +692,14 @@ talking_detected = False
 After **cycle 3** ends:
 ```
 open_close_cycle_count (3) >= CYCLES_TO_FLAG_TALKING (3) → True
-talking_detected = True
-open_close_cycle_count = 0   ← reset for next episode detection
+is_talking = True              ← sustained talking state starts
+open_close_cycle_count = 0     ← reset so next episode can be detected
+talking_inactivity_counter = 0
 open_frame_count = 0
+print '[Mouth] TALKING FLAGGED — cycles threshold reached'
 ```
 
-`mouth_flag = True` for exactly **one frame**.
+`mouth_flag = True` (is_talking) and **stays True** until 30 consecutive frames pass without a new cycle completing.
 
 Back in `process_frame()`:
 ```python
@@ -665,9 +707,9 @@ if mouth_flag:
     self.mouth_alert_time = time.time()
 ```
 
-`mouth_alert_active` will now be True for the next 5 seconds even though `mouth_flag` only fired once.
+`mouth_alert_active` stays True for 5 seconds after the last active `mouth_flag` frame.
 
-`_start_episode('MOUTH_OPEN')` records the timestamp. The episode closes on the next frame (since `mouth_flag` is False again), writing one CSV row immediately.
+`_start_episode('MOUTH_OPEN')` records the timestamp. The episode stays open as long as `is_talking` remains True. When `talking_inactivity_counter` reaches 30 (`is_talking` becomes False), `mouth_flag` returns False, `_update_episodes` calls `_end_episode`, and the CSV row is written with a meaningful duration (seconds, not zero).
 
 ---
 
@@ -677,16 +719,34 @@ The proctor clicks "End Session."
 
 ```python
 def _end_session(self):
-    self.running = False    # signals camera thread to stop
-    self.cap.release()      # releases the webcam
-    self.destroy()          # destroys the Tkinter window
+    self.running = False
+
+    if self._gui_update_id is not None:
+        try:
+            self.after_cancel(self._gui_update_id)   # cancel the pending _update_gui call
+        except Exception:
+            pass
+
+    for after_id in self._pending_after_ids:   # cancel all scheduled _clear_alert calls
+        try:
+            self.after_cancel(after_id)
+        except Exception:
+            pass
+    self.cap.release()
+    self.destroy()
 ```
+
+Two sources of stale callbacks must be cancelled before `destroy()`:
+
+1. **`_gui_update_id`** — the most recently queued `after(0, _update_gui, ...)` call. The camera thread may have already scheduled one more GUI update between `self.running = False` and the actual `destroy()`. Cancelling this prevents the `invalid command name` error from a stale `_update_gui` call firing after the Tk interpreter is gone.
+
+2. **`_pending_after_ids`** — one `after(5000, _clear_alert)` ID per alert fired during the session. Without cancellation, every queued cleanup callback fires against the destroyed Tk interpreter.
 
 Any active episodes in `active_episodes` that are still open (not None) will **not** be automatically closed — they remain partial. Only episodes that have ended (flag turned off) produce CSV rows. This is a known limitation: if the student is still looking away when End Session is clicked, that episode is not logged.
 
 ---
 
-## Stage 7 — Integrity Log (`gui/integrity_log_screen.py`)
+## Stage 7 — Integrity Log (`frontend/integrity_log_screen.py`)
 
 ```python
 session_log = pd.read_csv(self.processor.log_path)
@@ -762,7 +822,7 @@ shutil.copy(self.processor.log_path, destination_path)
 | absence_counter | frames without confirmed face | `int` | `0` to `∞` |
 | head_flag | head turned too long | `bool` | `True` / `False` |
 | absence_flag | face absent too long | `bool` | `True` / `False` |
-| mouth_flag | talking detected | `bool` | `True` (one frame only) |
+| mouth_flag | talking detected (sustained) | `bool` | `True` while `is_talking` is active |
 | result dict | all outputs per frame | `dict` | 11 keys |
 | active_episodes entry | episode start time | `datetime` or `None` | `2026-05-24 10:23:41.882` |
 | CSV row | one logged episode | list of 5 values | strings and int |
@@ -790,16 +850,35 @@ Effect:     absence_flag = True (stays True until counter resets)
 
 ### `open_frame_count` (mouth, counts frames mouth is open)
 ```
-Increments: every frame where SVM predicts open (1)
-Resets to 0: when mouth closes (SVM predicts 0), regardless of count
+Increments: every frame where SVM predicts open (1) AND MAR > mar_baseline × 1.5
+Resets to 0: when mouth closes (dual-gate outputs 0), regardless of count
 Triggers:   when mouth closes AND count >= MIN_OPEN_FRAMES_PER_CYCLE (5)
              → increments open_close_cycle_count
+Dismissed:  when mouth closes AND count > 0 but < 5 (noise, too brief)
+             → print '[Mouth] Dismissed — only open for N frames'
 ```
 
 ### `open_close_cycle_count` (mouth, counts full open-close cycles)
 ```
 Increments: each time a qualifying open-close cycle completes
-Resets to 0: when it reaches CYCLES_TO_FLAG_TALKING (3) and fires
-             → mouth_flag = True for exactly that one frame
+Resets to 0: when it reaches CYCLES_TO_FLAG_TALKING (3)
+             → sets is_talking = True, resets talking_inactivity_counter
 Does NOT reset: on a failed cycle (open_frame_count < 5)
+```
+
+### `is_talking` (mouth, sustained talking episode state)
+```
+Set to True:  when open_close_cycle_count reaches CYCLES_TO_FLAG_TALKING (3)
+Set to False: when talking_inactivity_counter reaches TALKING_INACTIVITY_THRESHOLD (30)
+Effect:       mouth_flag returns True every frame while is_talking is True
+              → episode stays open until is_talking becomes False
+              → CSV row is written with a real duration (not zero)
+```
+
+### `talking_inactivity_counter` (mouth, decay timer for talking state)
+```
+Increments: every frame where is_talking is True AND no new cycle completes
+Resets to 0: when a new cycle completes (cycle_completed = True) while is_talking
+             OR when is_talking first becomes True
+Triggers:   when it reaches TALKING_INACTIVITY_THRESHOLD (30) → is_talking = False
 ```

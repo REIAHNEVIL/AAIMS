@@ -7,9 +7,8 @@ class FaceAbsenceDetector:
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
 
-        self.absence_counter    = 0
-        self.ABSENCE_THRESHOLD  = 30
-        self.current_face_state = 1
+        self.absence_counter   = 0
+        self.ABSENCE_THRESHOLD = 30
         print('FaceAbsenceDetector loaded successfully.')
 
     def predict(self, grayscale_frame):

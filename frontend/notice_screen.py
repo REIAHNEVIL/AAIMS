@@ -1,5 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
+from frontend.styles import (
+    BG_MAIN, BG_CARD,
+    TEXT_PRIMARY, TEXT_SECONDARY,
+    FONT_HEADING, FONT_SUBHEADING, FONT_SMALL,
+    BTN_PRIMARY
+)
 
 class NoticeScreen(tk.Tk):
 
@@ -10,22 +16,15 @@ class NoticeScreen(tk.Tk):
         self.title('AAIMS — Pre-Examination Notice')
         self.geometry('550x460')
         self.resizable(False, False)
-        self.configure(bg='#F5F5F5')
+        self.configure(bg=BG_MAIN)
 
-        tk.Label(self,
-                 text='Automated Academic Integrity Monitoring System',
-                 font=('Arial', 11, 'bold'),
-                 bg='#F5F5F5', fg='#1A1A1A',
-                 wraplength=500).pack(pady=(20, 2))
+        tk.Label(self, text='Automated Academic Integrity Monitoring System', font=FONT_HEADING, bg=BG_MAIN, fg=TEXT_PRIMARY, wraplength=500).pack(pady=(20, 2))
 
-        tk.Label(self,
-                 text='Pre-Examination Notice',
-                 font=('Arial', 10),
-                 bg='#F5F5F5', fg='#444444').pack(pady=(0, 10))
+        tk.Label(self, text='Pre-Examination Notice', font=FONT_SMALL, bg=BG_MAIN, fg=TEXT_SECONDARY).pack(pady=(0, 10))
 
         ttk.Separator(self, orient='horizontal').pack(fill='x', padx=30)
 
-        notice_frame = tk.Frame(self, bg='#EFEFEF')
+        notice_frame = tk.Frame(self, bg=BG_CARD)
         notice_frame.pack(fill='both', expand=True, padx=30, pady=10)
 
         notice = (
@@ -44,21 +43,11 @@ class NoticeScreen(tk.Tk):
             'read and understood this notice.'
         )
 
-        tk.Label(notice_frame, text=notice,
-                 font=('Arial', 9),
-                 bg='#EFEFEF', fg='#1A1A1A',
-                 justify='left',
-                 wraplength=460).pack(padx=15, pady=12)
+        tk.Label(notice_frame, text=notice, font=FONT_SMALL, bg=BG_CARD, fg=TEXT_PRIMARY, justify='left', wraplength=460).pack(padx=15, pady=12)
 
         ttk.Separator(self, orient='horizontal').pack(fill='x', padx=30)
 
-        tk.Button(self,
-                  text='I Acknowledge — Proceed',
-                  font=('Arial', 10, 'bold'),
-                  bg='#2C3E50', fg='white',
-                  activebackground='#1A252F',
-                  relief='flat', cursor='hand2',
-                  pady=8, padx=20,
+        tk.Button(self, text='I Acknowledge — Proceed', font=FONT_SUBHEADING, **BTN_PRIMARY, pady=8, padx=20,
                   command=self._acknowledge).pack(pady=12)
 
     def _acknowledge(self):

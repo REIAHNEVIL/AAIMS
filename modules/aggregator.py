@@ -5,8 +5,8 @@ import datetime
 import os
 import time
 
-from modules.head_pose      import HeadPoseDetector
-from modules.face_absence   import FaceAbsenceDetector
+from modules.head_pose import HeadPoseDetector
+from modules.face_absence import FaceAbsenceDetector
 from modules.mouth_detection import MouthMovementDetector
 
 EVENT_LABELS = {
@@ -18,15 +18,17 @@ EVENT_LABELS = {
 class AaimsProcessor:
 
     def __init__(self):
-        self.head_pose    = HeadPoseDetector()
+        self.head_pose = HeadPoseDetector()
         self.face_absence = FaceAbsenceDetector()
-        self.mouth        = MouthMovementDetector()
+        self.mouth = MouthMovementDetector()
 
         self.face_mesh = mp.solutions.face_mesh.FaceMesh(
             max_num_faces=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
+
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
         self.alert_callback = None
 
@@ -36,7 +38,7 @@ class AaimsProcessor:
             'MOUTH_OPEN':  None,
         }
 
-        self.mouth_alert_time    = 0
+        self.mouth_alert_time = 0
         self.MOUTH_ALERT_DISPLAY = 5
 
         os.makedirs('logs', exist_ok=True)
@@ -59,12 +61,12 @@ class AaimsProcessor:
     def _start_episode(self, event_type):
         if self.active_episodes[event_type] is None:
             self.active_episodes[event_type] = datetime.datetime.now()
+            print(f'[Episode START] {event_type} at {self.active_episodes[event_type].strftime("%H:%M:%S")}')
+            if self.alert_callback:
+                self.alert_callback(EVENT_LABELS[event_type])
 
     def _end_episode(self, event_type):
         start = self.active_episodes[event_type]
-        if start is None:
-            return
-
         end      = datetime.datetime.now()
         duration = (end - start).seconds
 
@@ -75,10 +77,12 @@ class AaimsProcessor:
                 end.strftime('%Y-%m-%d %H:%M:%S'),
                 duration,
                 event_type,
-                EVENT_LABELS.get(event_type, event_type)
+                EVENT_LABELS[event_type]
             ])
 
+        print(f'[Episode END]   {event_type} | duration: {duration}s | logged to {self.log_path}')
         self.active_episodes[event_type] = None
+
 
     def _update_episodes(self, head_flag, absence_flag, mouth_flag):
         flags = {
@@ -94,25 +98,30 @@ class AaimsProcessor:
                 if self.active_episodes[event_type] is not None:
                     self._end_episode(event_type)
 
+
     def process_frame(self, frame):
         image_height, image_width = frame.shape[:2]
-
         grayscale_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        rgb_frame       = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        grayscale_frame = cv2.resize(grayscale_frame, (640, 480))
+        grayscale_frame = cv2.GaussianBlur(grayscale_frame, (5, 5), 0)
+        grayscale_frame = self.clahe.apply(grayscale_frame)
 
-        pitch              = 0.0
-        yaw                = 0.0
-        roll               = 0.0
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        pitch = 0.0
+        yaw = 0.0
+        roll = 0.0
         mouth_aspect_ratio = 0.0
-        face_present       = 0
-        head_flag          = False
-        mouth_flag         = False
-        direction          = 'No Face'
+        face_present = 0
+        head_flag = False
+        mouth_flag = False
+        direction = 'No Face'
 
-        results                = self.face_mesh.process(rgb_frame)
+        results = self.face_mesh.process(rgb_frame)
         mediapipe_detects_face = bool(results.multi_face_landmarks)
-        haar_detects_face      = self.face_absence.predict(grayscale_frame) == 1
+        haar_detects_face = self.face_absence.predict(grayscale_frame) == 1
 
+        # Absence counter (AND logic) ────────────────────────────────────────────────
         if haar_detects_face and mediapipe_detects_face:
             self.face_absence.absence_counter = 0
         else:
@@ -120,51 +129,37 @@ class AaimsProcessor:
 
         if mediapipe_detects_face:
             face_present = 1
-            landmarks    = results.multi_face_landmarks[0]
+            landmarks = results.multi_face_landmarks[0]
 
-            pitch, yaw, roll, *_ = self.head_pose.get_angles(
-                landmarks, image_width, image_height)
+            pitch, yaw, roll, *_ = self.head_pose.get_angles(landmarks, image_width, image_height)
 
             if pitch is not None:
                 direction = self.head_pose.get_direction(pitch, yaw)
                 head_flag = self.head_pose.detect_head_turned(pitch, yaw)
 
-            mouth_flag         = self.mouth.detect_talking(
-                landmarks.landmark, image_width, image_height)
+            mouth_flag = self.mouth.detect_talking(landmarks.landmark, image_width, image_height)
             mouth_aspect_ratio = self.mouth.last_mar
 
         else:
             face_present = 0
             direction    = 'No Face'
 
-            self.mouth.last_mar               = 0.0
-            self.mouth.current_mouth_state    = 0
-            self.mouth.open_frame_count       = 0
+            self.mouth.last_mar = 0.0
+            self.mouth.current_mouth_state = 0
+            self.mouth.open_frame_count  = 0
             self.mouth.open_close_cycle_count = 0
+            self.mouth.is_talking = False
+            self.mouth.talking_inactivity_counter = 0
             mouth_aspect_ratio = 0.0
 
-        absence_flag = (
-            self.face_absence.absence_counter >=
-            self.face_absence.ABSENCE_THRESHOLD
-        )
+        absence_flag = (self.face_absence.absence_counter >= self.face_absence.ABSENCE_THRESHOLD)
 
         self._update_episodes(head_flag, absence_flag, mouth_flag)
 
         if mouth_flag:
             self.mouth_alert_time = time.time()
 
-        mouth_alert_active = (
-            time.time() - self.mouth_alert_time
-        ) < self.MOUTH_ALERT_DISPLAY
-
-        flagged_events = []
-        if head_flag:    flagged_events.append('HEAD_TURN')
-        if absence_flag: flagged_events.append('FACE_ABSENT')
-        if mouth_flag:   flagged_events.append('MOUTH_OPEN')
-
-        if flagged_events and self.alert_callback:
-            self.alert_callback(
-                ', '.join(EVENT_LABELS[e] for e in flagged_events))
+        mouth_alert_active = (time.time() - self.mouth_alert_time) < self.MOUTH_ALERT_DISPLAY
 
         return {
             'pitch':              pitch,
@@ -177,5 +172,5 @@ class AaimsProcessor:
             'absence_flag':       absence_flag,
             'mouth_flag':         mouth_flag,
             'mouth_alert_active': mouth_alert_active,
-            'flagged':            len(flagged_events) > 0
+            'flagged':            head_flag or absence_flag or mouth_flag
         }
